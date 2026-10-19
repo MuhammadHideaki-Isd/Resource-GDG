@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ReSource — POST /resources Test Runner</title>
+  <style>
+    body { font-family: monospace; background: #0f0f0f; color: #d4d4d4; padding: 2rem; }
+    h1   { color: #4ec9b0; margin-bottom: 0.25rem; }
+    p    { color: #888; margin-top: 0; }
+    #output { margin-top: 1.5rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>ReSource — POST /resources Test Runner</h1>
+  <p>Open the browser console to see detailed results.</p>
+  <div id="output">Running tests…</div>
+
+  <!--
+    Load order mirrors the dependency graph:
+      data.js (storage)
+      → generateId.js (utility)
+      → resourceRepository.js (persistence)
+      → resourceService.js (business rules)
+      → resourceController.js (HTTP adapter)
+      → resourceEndpoint.test.js (tests)
+  -->
+  <script src="../assets/js/data.js"></script>
+  <script src="../assets/js/utils/generateId.js"></script>
+  <script src="../assets/js/repositories/resourceRepository.js"></script>
+  <script src="../assets/js/services/resourceService.js"></script>
+  <script src="../assets/js/api/resourceController.js"></script>
+  <script src="resourceEndpoint.test.js"></script>
+
+  <script>
+    // Display summary in the page after tests run
+    const el = document.getElementById('output');
+    // _results is set by runAll() at the bottom of the test file
+    if (typeof _results !== 'undefined') {
+      const { passed, failed, errors } = _results;
+      let html = `✓ ${passed} passed   ✗ ${failed} failed\n`;
+      if (errors.length) {
+        html += '\nFailed tests:\n';
+        errors.forEach((e) => {
+          html += `  • ${e.label}\n    ${e.message}\n`;
+        });
+      }
+      el.textContent = html;
+      el.style.color = failed === 0 ? '#4ec9b0' : '#f44747';
+    }
+  </script>
+</body>
+</html>

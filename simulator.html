@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReSource — Data Flow Simulator</title>
+  <style>
+    /* ─── Design tokens ───────────────────────────────────────────────────── */
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface2:    #222638;
+      --border:      #2e3347;
+      --accent:      #4ade80;   /* green — success / active */
+      --accent2:     #60a5fa;   /* blue  — info / scores   */
+      --accent3:     #f59e0b;   /* amber — value / money   */
+      --accent4:     #a78bfa;   /* violet — match          */
+      --muted:       #6b7280;
+      --text:        #e5e7eb;
+      --text-dim:    #9ca3af;
+      --danger:      #f87171;
+      --radius:      10px;
+      --radius-sm:   6px;
+    }
+
+    /* ─── Reset / base ────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    a { color: var(--accent2); }
+    button {
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 1.1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: opacity .15s, transform .1s;
+    }
+    button:active  { transform: scale(.97); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ─── Layout ──────────────────────────────────────────────────────────── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--accent2); }
+    .subtitle { color: var(--text-dim); font-size: 0.875rem; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    /* ─── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .9rem;
+    }
+
+    /* ─── Step stepper ────────────────────────────────────────────────────── */
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 1.75rem;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-shrink: 0;
+    }
+    .step-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 700;
+      color: var(--muted);
+      transition: all .3s;
+      cursor: pointer;
+      position: relative;
+      z-index: 1;
+    }
+    .step-dot.active  { border-color: var(--accent2); color: var(--accent2); background: #1e2a40; }
+    .step-dot.done    { border-color: var(--accent);  background: var(--accent); color: #000; }
+    .step-label {
+      font-size: .7rem; font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+      margin: 0 .35rem;
+      transition: color .3s;
+    }
+    .step-label.active { color: var(--accent2); }
+    .step-label.done   { color: var(--accent); }
+    .step-connector {
+      width: 32px; height: 2px;
+      background: var(--border);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+    .step-connector.done { background: var(--accent); }
+
+    /* ─── Step panels ─────────────────────────────────────────────────────── */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* ─── Resource catalog ────────────────────────────────────────────────── */
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: .75rem;
+      margin-top: .75rem;
+    }
+    .resource-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .9rem 1rem;
+    }
+    .resource-card .tag {
+      display: inline-block;
+      font-size: .65rem; font-weight: 700;
+      padding: .15rem .45rem;
+      border-radius: 4px;
+      margin-bottom: .4rem;
+    }
+    .tag-available { background: #052e16; color: var(--accent); }
+    .tag-reserved  { background: #2d1b00; color: var(--accent3); }
+    .tag-matched   { background: #1e1b4b; color: var(--accent4); }
+    .resource-card h4 { font-size: .875rem; margin-bottom: .2rem; }
+    .resource-card .meta { font-size: .75rem; color: var(--text-dim); }
+    .resource-card .price { font-size: .8rem; color: var(--accent3); margin-top: .35rem; font-weight: 600; }
+
+    /* ─── Demand form ─────────────────────────────────────────────────────── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+      margin-top: .5rem;
+    }
+    .form-grid.full { grid-template-columns: 1fr; }
+    label { display: block; font-size: .75rem; color: var(--text-dim); margin-bottom: .3rem; }
+    select, input[type=number], input[type=date] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: .45rem .65rem;
+      font-size: .875rem;
+      font-family: inherit;
+      outline: none;
+    }
+    select:focus, input:focus { border-color: var(--accent2); }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover:not(:disabled) { opacity: .88; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+    .btn-confirm { background: var(--accent4); color: #fff; }
+    .btn-confirm:hover:not(:disabled) { opacity: .88; }
+    .btn-reset { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-reset:hover { background: #2a0a0a; }
+
+    /* ─── Match result ────────────────────────────────────────────────────── */
+    .match-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .match-score-badge {
+      font-size: 2rem; font-weight: 800;
+      color: var(--accent4);
+      line-height: 1;
+    }
+    .score-bar-wrap { margin-bottom: .55rem; }
+    .score-bar-label {
+      display: flex; justify-content: space-between;
+      font-size: .72rem; color: var(--text-dim);
+      margin-bottom: .2rem;
+    }
+    .score-bar-track {
+      height: 7px; border-radius: 99px;
+      background: var(--surface2);
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%; border-radius: 99px;
+      background: var(--accent4);
+      transition: width .6s ease;
+    }
+    .score-bar-fill.material   { background: var(--accent2); }
+    .score-bar-fill.quantity   { background: var(--accent); }
+    .score-bar-fill.distance   { background: var(--accent3); }
+    .score-bar-fill.avail      { background: var(--accent4); }
+    .score-bar-fill.total      { background: linear-gradient(90deg, var(--accent2), var(--accent4)); }
+
+    /* ─── Value cards ─────────────────────────────────────────────────────── */
+    .value-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: .75rem;
+      margin-top: .75rem;
+    }
+    .value-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .85rem 1rem;
+    }
+    .value-card .vc-label { font-size: .7rem; color: var(--muted); margin-bottom: .3rem; }
+    .value-card .vc-value { font-size: 1.15rem; font-weight: 700; }
+    .vc-transaction { color: var(--accent2); }
+    .vc-saving      { color: var(--accent); }
+    .vc-fee         { color: var(--accent3); }
+    .vc-supplier    { color: var(--accent4); }
+
+    /* ─── Impact metrics ──────────────────────────────────────────────────── */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+      margin-top: .75rem;
+    }
+    .metric-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .85rem 1rem;
+      text-align: center;
+    }
+    .metric-card .mc-num { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+    .metric-card .mc-label { font-size: .7rem; color: var(--muted); margin-top: .2rem; }
+
+    /* ─── Activity log ────────────────────────────────────────────────────── */
+    .log-wrap {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: .72rem;
+      background: #080a0f;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .75rem;
+      max-height: 420px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+    }
+    .log-entry { display: flex; gap: .6rem; align-items: flex-start; }
+    .log-time  { color: var(--muted); flex-shrink: 0; }
+    .log-msg.info    { color: var(--text-dim); }
+    .log-msg.success { color: var(--accent); }
+    .log-msg.engine  { color: var(--accent4); }
+    .log-msg.value   { color: var(--accent3); }
+    .log-msg.tx      { color: var(--accent2); }
+    .log-msg.warn    { color: var(--danger); }
+    .log-divider {
+      border: none; border-top: 1px dashed var(--border);
+      margin: .2rem 0;
+    }
+
+    /* ─── Demand summary ──────────────────────────────────────────────────── */
+    .demand-summary {
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: .75rem 1rem;
+      font-size: .8rem;
+      color: var(--text-dim);
+      margin-top: .75rem;
+    }
+    .demand-summary strong { color: var(--text); }
+
+    /* ─── Nav buttons ─────────────────────────────────────────────────────── */
+    .step-nav {
+      display: flex; gap: .6rem; margin-top: 1.25rem; justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    /* ─── Empty/error states ──────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 2rem 1rem;
+      color: var(--muted); font-size: .85rem;
+    }
+    .badge-no-match {
+      display: inline-block;
+      background: #2d0a0a; color: var(--danger);
+      border-radius: 4px; padding: .2rem .6rem;
+      font-size: .7rem; font-weight: 700;
+    }
+
+    /* ─── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--  PAGE HEADER                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<header class="page-header">
+  <div>
+    <div class="logo">Re<span>Source</span></div>
+    <div class="subtitle">Data Flow Simulator — End-to-End MVP Demo (localStorage only)</div>
+  </div>
+  <button class="btn-reset" onclick="App.resetAll()" style="margin-left:auto">↺ Reset Demo</button>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--  STEPPER                                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="stepper" id="stepper">
+  <!-- injected by JS -->
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--  MAIN LAYOUT                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="layout">
+
+  <!-- ── LEFT: step panels ─────────────────────────────────────────────── -->
+  <div id="panelContainer">
+
+    <!-- ── STEP 1: Resource Catalog ──────────────────────────────────── -->
+    <div class="step-panel" id="panel-1">
+      <div class="card">
+        <div class="card-title">Step 1 — Resource Catalog (Seed Data)</div>
+        <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;">
+          Material listings from supplier businesses. Source of truth: <code>resources</code> table.
+        </p>
+        <div class="resource-grid" id="resourceGrid"></div>
+        <div class="step-nav">
+          <button class="btn-primary" onclick="App.goTo(2)">Next: Input Demand →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: Buyer Demand ───────────────────────────────────────── -->
+    <div class="step-panel" id="panel-2">
+      <div class="card">
+        <div class="card-title">Step 2 — Buyer Demand Request</div>
+        <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;">
+          Select a buyer and define what material they need. This maps to the <code>demands</code> table.
+        </p>
+
+        <div class="form-grid">
+          <div>
+            <label>Buyer Business</label>
+            <select id="demandBuyer"></select>
+          </div>
+          <div>
+            <label>Material Category</label>
+            <select id="demandCategory"></select>
+          </div>
+          <div>
+            <label>Quantity Needed (kg)</label>
+            <input type="number" id="demandQty" min="1" value="300" />
+          </div>
+          <div>
+            <label>Max Price per kg (Rp)</label>
+            <input type="number" id="demandPrice" min="0" value="650" />
+          </div>
+          <div>
+            <label>Date Needed</label>
+            <input type="date" id="demandDate" value="2026-10-17" />
+          </div>
+        </div>
+
+        <div class="step-nav">
+          <button class="btn-secondary" onclick="App.goTo(1)">← Back</button>
+          <button class="btn-primary" onclick="App.submitDemand()">Run Matching Engine →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Match Score ────────────────────────────────────────── -->
+    <div class="step-panel" id="panel-3">
+      <div class="card">
+        <div class="card-title">Step 3 — Matching Engine Result</div>
+        <div id="matchResult"></div>
+        <div class="step-nav">
+          <button class="btn-secondary" onclick="App.goTo(2)">← Change Demand</button>
+          <button class="btn-primary" id="toStep4Btn" onclick="App.goTo(4)">Next: Economic Value →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: Economic Value ─────────────────────────────────────── -->
+    <div class="step-panel" id="panel-4">
+      <div class="card">
+        <div class="card-title">Step 4 — Estimated Economic Value</div>
+        <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;">
+          Calculations from <code>calculateBusinessValue()</code> — Dok 02 §5B.
+          All figures are estimates for demo only.
+        </p>
+        <div id="valueResult"></div>
+        <div class="step-nav">
+          <button class="btn-secondary" onclick="App.goTo(3)">← Back</button>
+          <button class="btn-confirm" onclick="App.confirmMatch()">✓ Confirm Match & Create Transaction →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 5: Impact Dashboard ───────────────────────────────────── -->
+    <div class="step-panel" id="panel-5">
+      <div class="card">
+        <div class="card-title">Step 5 — Impact Dashboard</div>
+        <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;">
+          Live metrics from <code>calculateImpact(transactions)</code> — Dok 02 §6.
+          Mirrors what a <code>system_impact_summary</code> table would hold in PostgreSQL.
+        </p>
+        <div id="impactResult"></div>
+
+        <div style="margin-top:1.25rem;">
+          <div class="card-title">Last Transaction</div>
+          <div id="txResult"></div>
+        </div>
+
+        <div class="step-nav">
+          <button class="btn-secondary" onclick="App.goTo(4)">← Back</button>
+          <button class="btn-primary" onclick="App.goTo(1)">↺ Run Another Demo</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /panelContainer -->
+
+  <!-- ── RIGHT: activity log ───────────────────────────────────────────── -->
+  <div>
+    <div class="card" style="position:sticky;top:1rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+        <span class="card-title" style="margin:0">Activity Log</span>
+        <button class="btn-secondary" style="padding:.25rem .6rem;font-size:.65rem;" onclick="App.clearLog()">Clear</button>
+      </div>
+      <div class="log-wrap" id="logWrap"></div>
+    </div>
+  </div>
+
+</div><!-- /layout -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--  SCRIPTS — load order mirrors dependency graph                         -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<script src="assets/js/data.js"></script>
+<script src="assets/js/utils/generateId.js"></script>
+<script src="assets/js/repositories/resourceRepository.js"></script>
+<script src="assets/js/services/resourceService.js"></script>
+<script src="assets/js/api/resourceController.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIMULATOR APP
+   All state lives in the `State` object.  No frameworks, no build tools.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const STEP_DEFS = [
+  { n: 1, label: 'Catalog'   },
+  { n: 2, label: 'Demand'    },
+  { n: 3, label: 'Matching'  },
+  { n: 4, label: 'Value'     },
+  { n: 5, label: 'Impact'    },
+];
+
+const State = {
+  currentStep:    1,
+  demand:         null,   // submitted demand object
+  matchResult:    null,   // { match, scores, candidateCount }
+  valueResult:    null,   // { transactionValue, buyerSaving, platformFee, supplierRevenue }
+  transaction:    null,   // created transaction record
+};
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
+function fmt(n) {
+  return 'Rp' + Number(n).toLocaleString('id-ID');
+}
+function fmtKg(n) {
+  return Number(n).toLocaleString('id-ID') + ' kg';
+}
+function now() {
+  return new Date().toLocaleTimeString('id-ID', { hour12: false });
+}
+
+/* ── Activity log ────────────────────────────────────────────────────────── */
+function log(msg, type = 'info') {
+  const wrap = document.getElementById('logWrap');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">[${now()}]</span><span class="log-msg ${type}">${msg}</span>`;
+  wrap.appendChild(entry);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function logDiv() {
+  const wrap = document.getElementById('logWrap');
+  const hr = document.createElement('hr');
+  hr.className = 'log-divider';
+  wrap.appendChild(hr);
+}
+
+/* ── Stepper render ──────────────────────────────────────────────────────── */
+function renderStepper(currentStep) {
+  const el = document.getElementById('stepper');
+  el.innerHTML = '';
+  STEP_DEFS.forEach((s, i) => {
+    const done   = s.n < currentStep;
+    const active = s.n === currentStep;
+    const dotClass = done ? 'done' : (active ? 'active' : '');
+    const lblClass = done ? 'done' : (active ? 'active' : '');
+
+    const item = document.createElement('div');
+    item.className = 'step-item';
+    item.innerHTML = `
+      <div class="step-dot ${dotClass}" onclick="App.goTo(${s.n})">${done ? '✓' : s.n}</div>
+      <span class="step-label ${lblClass}">${s.label}</span>
+    `;
+    el.appendChild(item);
+
+    if (i < STEP_DEFS.length - 1) {
+      const conn = document.createElement('div');
+      conn.className = 'step-connector' + (done ? ' done' : '');
+      el.appendChild(conn);
+    }
+  });
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+function showPanel(n) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('panel-' + n);
+  if (panel) panel.classList.add('active');
+}
+
+/* ── Step 1: Catalog ─────────────────────────────────────────────────────── */
+function renderCatalog() {
+  const data    = loadData();
+  const grid    = document.getElementById('resourceGrid');
+  const catMap  = Object.fromEntries(data.categories.map(c => [c.id, c.name]));
+  const bizMap  = Object.fromEntries(data.businesses.map(b => [b.id, b.name]));
+
+  grid.innerHTML = '';
+  data.resources.forEach(r => {
+    const tagClass = r.status === 'available' ? 'tag-available'
+                   : r.status === 'reserved'  ? 'tag-reserved'
+                   : 'tag-matched';
+    grid.innerHTML += `
+      <div class="resource-card">
+        <span class="tag ${tagClass}">${r.status}</span>
+        <h4>${r.title}</h4>
+        <div class="meta">${bizMap[r.providerId] || r.providerId} · ${r.location}</div>
+        <div class="meta">${catMap[r.categoryId] || r.categoryId}</div>
+        <div class="meta">${fmtKg(r.quantityKg)} tersedia</div>
+        <div class="price">${fmt(r.indicativePricePerKg)} / kg</div>
+        <div class="meta" style="margin-top:.3rem">Tersedia: ${r.availableDate}</div>
+      </div>`;
+  });
+}
+
+/* ── Step 2: Demand form options ─────────────────────────────────────────── */
+function populateDemandForm() {
+  const data = loadData();
+
+  const buyerSel = document.getElementById('demandBuyer');
+  buyerSel.innerHTML = '';
+  data.businesses.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b.id;
+    opt.textContent = b.name + ' (' + b.city + ')';
+    buyerSel.appendChild(opt);
+  });
+  // Pre-select EcoForm Studio (biz-02) to match the PRD demo scenario
+  buyerSel.value = 'biz-02';
+
+  const catSel = document.getElementById('demandCategory');
+  catSel.innerHTML = '';
+  data.categories.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    catSel.appendChild(opt);
+  });
+  catSel.value = '1'; // Serbuk Kayu — PRD demo scenario
+}
+
+/* ── Step 3: Run matching ────────────────────────────────────────────────── */
+function runMatching() {
+  const data     = loadData();
+  const demand   = State.demand;
+  const catMap   = Object.fromEntries(data.categories.map(c => [c.id, c.name]));
+  const bizMap   = Object.fromEntries(data.businesses.map(b => [b.id, b.name]));
+
+  log('──────────────────────────────', 'info');
+  log(`MATCHING ENGINE START`, 'engine');
+  log(`Demand: ${fmtKg(demand.quantityNeededKg)} ${catMap[demand.categoryId]} by ${bizMap[demand.buyerId]}`, 'engine');
+  log(`Needed by: ${demand.neededDate} | Max price: ${fmt(demand.maxPricePerKg)}/kg`, 'engine');
+
+  // ── Filter candidates (Dok 03 §11) ──────────────────────────────────────
+  const candidates = data.resources.filter(r => {
+    return r.categoryId === demand.categoryId
+        && r.status === 'available'
+        && r.quantityKg > 0;
+  });
+  log(`Candidates after filter: ${candidates.length}`, 'engine');
+
+  if (candidates.length === 0) {
+    State.matchResult = { match: null, scores: null, candidateCount: 0 };
+    log('No candidates found.', 'warn');
+    return;
+  }
+
+  // ── Score each candidate ─────────────────────────────────────────────────
+  let best = null;
+  candidates.forEach(r => {
+    const bizR = data.businesses.find(b => b.id === r.providerId);
+    const bizD = data.businesses.find(b => b.id === demand.buyerId);
+
+    const matScore  = calculateMaterialScore(r.categoryId, demand.categoryId);
+    const qtyScore  = calculateQuantityScore(r.quantityKg, demand.quantityNeededKg);
+
+    // Distance: same city → 5 km, different city → 15 km (demo approximation)
+    const sameCity  = (bizR && bizD) ? bizR.city === bizD.city : false;
+    const distKm    = sameCity ? 5 : 15;
+    const distScore = calculateDistanceScore(distKm);
+
+    const availScore = calculateAvailabilityScore(r.availableDate, demand.neededDate);
+
+    const total = calculateMatchScore({
+      material:     matScore,
+      quantity:     qtyScore,
+      distance:     distScore,
+      availability: availScore,
+    });
+
+    log(`  [${r.id}] mat:${matScore} qty:${qtyScore.toFixed(1)} dist:${distScore} avail:${availScore} → TOTAL: ${total.toFixed(2)}`, 'engine');
+
+    if (!best || total > best.total) {
+      best = { resource: r, matScore, qtyScore, distScore, availScore, total, distKm };
+    }
+  });
+
+  State.matchResult = {
+    match:          best,
+    candidateCount: candidates.length,
+  };
+
+  log(`Best match: ${best.resource.id} — score ${best.total.toFixed(2)}`, 'success');
+}
+
+function renderMatchResult() {
+  const el     = document.getElementById('matchResult');
+  const result = State.matchResult;
+
+  if (!result || !result.match) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <span class="badge-no-match">NO MATCH</span>
+        <p style="margin-top:.75rem">Tidak ada resource yang cocok untuk demand ini.</p>
+        <p>Coba ganti kategori atau relax constraint.</p>
+      </div>`;
+    document.getElementById('toStep4Btn').disabled = true;
+    return;
+  }
+
+  document.getElementById('toStep4Btn').disabled = false;
+  const m   = result.match;
+  const r   = m.resource;
+  const data = loadData();
+  const catMap = Object.fromEntries(data.categories.map(c => [c.id, c.name]));
+  const bizMap = Object.fromEntries(data.businesses.map(b => [b.id, b.name]));
+
+  const totalPct  = m.total.toFixed(1);
+  const matPct    = m.matScore.toFixed(1);
+  const qtyPct    = m.qtyScore.toFixed(1);
+  const distPct   = m.distScore.toFixed(1);
+  const availPct  = m.availScore.toFixed(1);
+
+  el.innerHTML = `
+    <div class="match-header">
+      <div>
+        <div style="font-size:.75rem;color:var(--muted)">Best Match</div>
+        <div style="font-size:1rem;font-weight:700;margin:.15rem 0">${r.title}</div>
+        <div style="font-size:.75rem;color:var(--text-dim)">${bizMap[r.providerId]} · ${r.location} · ${fmtKg(r.quantityKg)} tersedia</div>
+      </div>
+      <div class="match-score-badge">${totalPct}%</div>
+    </div>
+
+    <div class="score-bar-wrap">
+      <div class="score-bar-label">
+        <span>Material Compatibility (×0.40)</span><span>${matPct}%</span>
+      </div>
+      <div class="score-bar-track"><div class="score-bar-fill material" style="width:${matPct}%"></div></div>
+    </div>
+    <div class="score-bar-wrap">
+      <div class="score-bar-label">
+        <span>Quantity Compatibility (×0.30)</span><span>${qtyPct}%</span>
+      </div>
+      <div class="score-bar-track"><div class="score-bar-fill quantity" style="width:${qtyPct}%"></div></div>
+    </div>
+    <div class="score-bar-wrap">
+      <div class="score-bar-label">
+        <span>Distance Score (×0.20) — ~${m.distKm} km</span><span>${distPct}%</span>
+      </div>
+      <div class="score-bar-track"><div class="score-bar-fill distance" style="width:${distPct}%"></div></div>
+    </div>
+    <div class="score-bar-wrap">
+      <div class="score-bar-label">
+        <span>Availability Score (×0.10)</span><span>${availPct}%</span>
+      </div>
+      <div class="score-bar-track"><div class="score-bar-fill avail" style="width:${availPct}%"></div></div>
+    </div>
+    <div class="score-bar-wrap" style="margin-top:.6rem">
+      <div class="score-bar-label" style="font-weight:700;color:var(--text)">
+        <span>Weighted Match Score</span><span style="color:var(--accent4)">${totalPct}%</span>
+      </div>
+      <div class="score-bar-track" style="height:10px"><div class="score-bar-fill total" style="width:${totalPct}%"></div></div>
+    </div>
+
+    <div class="demand-summary">
+      Demand: <strong>${fmtKg(State.demand.quantityNeededKg)}</strong> ${catMap[State.demand.categoryId]}
+      · Max price <strong>${fmt(State.demand.maxPricePerKg)}/kg</strong>
+      · Needed by <strong>${State.demand.neededDate}</strong>
+    </div>
+  `;
+}
+
+/* ── Step 4: Value calculation ───────────────────────────────────────────── */
+function calculateValue() {
+  const m        = State.matchResult.match;
+  const demand   = State.demand;
+  const resource = m.resource;
+
+  // Use the quantity that can actually be fulfilled
+  const matchedQty     = Math.min(demand.quantityNeededKg, resource.quantityKg);
+  const pricePerKg     = resource.indicativePricePerKg;
+  // Alternative price = buyer's max price (demo assumption: represents market rate)
+  const altPricePerKg  = demand.maxPricePerKg;
+  const platformFeeRate = 0.05; // 5% — Dok 02 §5B
+
+  const transactionValue = matchedQty * pricePerKg;
+  const buyerSaving      = Math.max(0, (altPricePerKg - pricePerKg) * matchedQty);
+  const platformFee      = transactionValue * platformFeeRate;
+  const supplierRevenue  = transactionValue - platformFee;
+
+  State.valueResult = {
+    matchedQty, pricePerKg, altPricePerKg,
+    transactionValue, buyerSaving, platformFee, supplierRevenue,
+  };
+
+  log('──────────────────────────────', 'info');
+  log('VALUE CALCULATION', 'value');
+  log(`Matched qty:       ${fmtKg(matchedQty)}`, 'value');
+  log(`Price/kg:          ${fmt(pricePerKg)}`, 'value');
+  log(`Transaction value: ${fmt(transactionValue)}`, 'value');
+  log(`Buyer saving:      ${fmt(buyerSaving)}`, 'value');
+  log(`Platform fee (5%): ${fmt(platformFee)}`, 'value');
+  log(`Supplier revenue:  ${fmt(supplierRevenue)}`, 'value');
+}
+
+function renderValueResult() {
+  const v = State.valueResult;
+  const el = document.getElementById('valueResult');
+
+  el.innerHTML = `
+    <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:.5rem;">
+      ${fmtKg(v.matchedQty)} × ${fmt(v.pricePerKg)}/kg
+      &nbsp;|&nbsp; Alt. price (buyer max): ${fmt(v.altPricePerKg)}/kg
+    </div>
+    <div class="value-grid">
+      <div class="value-card">
+        <div class="vc-label">Transaction Value</div>
+        <div class="vc-value vc-transaction">${fmt(v.transactionValue)}</div>
+      </div>
+      <div class="value-card">
+        <div class="vc-label">Estimated Buyer Saving</div>
+        <div class="vc-value vc-saving">${fmt(v.buyerSaving)}</div>
+      </div>
+      <div class="value-card">
+        <div class="vc-label">Platform Fee (5%)</div>
+        <div class="vc-value vc-fee">${fmt(v.platformFee)}</div>
+      </div>
+      <div class="value-card">
+        <div class="vc-label">Supplier Revenue</div>
+        <div class="vc-value vc-supplier">${fmt(v.supplierRevenue)}</div>
+      </div>
+    </div>
+    <div class="demand-summary" style="margin-top:.9rem">
+      <strong>Formula (Dok 02 §5B):</strong>
+      txValue = qty × price/kg &nbsp;·&nbsp;
+      saving = (altPrice − price) × qty &nbsp;·&nbsp;
+      fee = txValue × 5% &nbsp;·&nbsp;
+      supplierRevenue = txValue − fee
+    </div>
+  `;
+}
+
+/* ── Step 5: Confirm match → transaction → impact ────────────────────────── */
+function createTransaction() {
+  const data     = loadData();
+  const v        = State.valueResult;
+  const matchRes = State.matchResult.match;
+
+  // Create & persist a match record
+  const matchId  = generateId();
+  const match = {
+    id:                    matchId,
+    resourceId:            matchRes.resource.id,
+    demandId:              State.demand.id,
+    matchScore:            matchRes.total,
+    materialScore:         matchRes.matScore,
+    quantityScore:         matchRes.qtyScore,
+    distanceScore:         matchRes.distScore,
+    availabilityScore:     matchRes.availScore,
+    estimatedValue:        v.transactionValue,
+    estimatedBuyerSaving:  v.buyerSaving,
+    status:                'confirmed',
+  };
+  data.matches.push(match);
+
+  // Create & persist a transaction record
+  const txId = generateId();
+  const tx = {
+    id:               txId,
+    matchId:          matchId,
+    quantityKg:       v.matchedQty,
+    transactionValue: v.transactionValue,
+    platformFee:      v.platformFee,
+    supplierRevenue:  v.supplierRevenue,
+    buyerSaving:      v.buyerSaving,
+    transactionTime:  new Date().toISOString(),
+    status:           'completed',
+  };
+  data.transactions.push(tx);
+
+  // Update resource status: matched if all qty consumed, reserved otherwise
+  const resIdx = data.resources.findIndex(r => r.id === matchRes.resource.id);
+  if (resIdx !== -1) {
+    const remaining = data.resources[resIdx].quantityKg - v.matchedQty;
+    data.resources[resIdx].quantityKg = remaining;
+    data.resources[resIdx].status     = remaining <= 0 ? 'matched' : 'reserved';
+  }
+
+  // Update demand status
+  if (!data.demands.find(d => d.id === State.demand.id)) {
+    data.demands.push({ ...State.demand, status: 'matched' });
+  }
+
+  // Recalculate & persist metrics (replaces system_impact_summary)
+  data.metrics = calculateImpact(data.transactions);
+  saveData(data);
+
+  State.transaction = tx;
+
+  log('──────────────────────────────', 'info');
+  log('TRANSACTION CREATED', 'tx');
+  log(`Transaction ID: ${txId.slice(0,8)}…`, 'tx');
+  log(`Status: COMPLETED`, 'tx');
+  log(`Qty matched: ${fmtKg(tx.quantityKg)}`, 'tx');
+  log(`Value: ${fmt(tx.transactionValue)}`, 'tx');
+  log('IMPACT METRICS UPDATED', 'success');
+  const m = data.metrics;
+  log(`Total matched: ${fmtKg(m.totalResourcesMatchedKg)}`, 'success');
+  log(`Transactions: ${m.totalTransactions}`, 'success');
+  log(`Total savings: ${fmt(m.estimatedBuyerSavingsIdr)}`, 'success');
+  log(`Platform revenue: ${fmt(m.platformRevenueIdr)}`, 'success');
+}
+
+function renderImpact() {
+  const data = loadData();
+  const m    = data.metrics;
+  const el   = document.getElementById('impactResult');
+
+  el.innerHTML = `
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="mc-num">${Number(m.totalResourcesMatchedKg).toLocaleString('id-ID')}</div>
+        <div class="mc-label">kg Material Matched</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-num">${m.totalTransactions}</div>
+        <div class="mc-label">Transactions Completed</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-num" style="font-size:1.1rem">${fmt(m.estimatedBuyerSavingsIdr)}</div>
+        <div class="mc-label">Estimated Buyer Savings</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-num" style="font-size:1.1rem">${fmt(m.platformRevenueIdr)}</div>
+        <div class="mc-label">Platform Revenue</div>
+      </div>
+    </div>`;
+
+  const tx   = State.transaction;
+  const txEl = document.getElementById('txResult');
+  if (tx) {
+    txEl.innerHTML = `
+      <div class="demand-summary">
+        <strong>ID:</strong> ${tx.id.slice(0,8)}… &nbsp;·&nbsp;
+        <strong>Status:</strong> <span style="color:var(--accent)">COMPLETED</span> &nbsp;·&nbsp;
+        <strong>Qty:</strong> ${fmtKg(tx.quantityKg)} &nbsp;·&nbsp;
+        <strong>Value:</strong> ${fmt(tx.transactionValue)} &nbsp;·&nbsp;
+        <strong>Buyer Saving:</strong> ${fmt(tx.buyerSaving)} &nbsp;·&nbsp;
+        <strong>Platform Fee:</strong> ${fmt(tx.platformFee)} &nbsp;·&nbsp;
+        <strong>Time:</strong> ${new Date(tx.transactionTime).toLocaleString('id-ID')}
+      </div>`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PUBLIC App API
+   ═══════════════════════════════════════════════════════════════════════════ */
+const App = {
+
+  goTo(n) {
+    // Guard: can only move back, or to the next step if previous step is done
+    if (n > State.currentStep + 1) return; // skip-ahead not allowed
+    State.currentStep = n;
+    renderStepper(n);
+    showPanel(n);
+
+    if (n === 1) renderCatalog();
+    if (n === 2) populateDemandForm();
+    if (n === 3) renderMatchResult();
+    if (n === 4) renderValueResult();
+    if (n === 5) renderImpact();
+  },
+
+  submitDemand() {
+    const buyerId    = document.getElementById('demandBuyer').value;
+    const categoryId = Number(document.getElementById('demandCategory').value);
+    const qty        = Number(document.getElementById('demandQty').value);
+    const maxPrice   = Number(document.getElementById('demandPrice').value);
+    const neededDate = document.getElementById('demandDate').value;
+
+    if (!buyerId || qty <= 0 || !neededDate) {
+      alert('Lengkapi form terlebih dahulu.');
+      return;
+    }
+
+    State.demand = {
+      id:              generateId(),
+      buyerId,
+      categoryId,
+      quantityNeededKg: qty,
+      maxPricePerKg:   maxPrice,
+      location:        loadData().businesses.find(b => b.id === buyerId)?.city || '',
+      neededDate,
+      status: 'open',
+    };
+
+    logDiv();
+    log('DEMAND CREATED', 'info');
+    log(`Buyer: ${buyerId} | Cat: ${categoryId} | Qty: ${qty} kg | Max: ${fmt(maxPrice)}/kg | Date: ${neededDate}`, 'info');
+
+    runMatching();
+
+    State.currentStep = 3;
+    renderStepper(3);
+    showPanel(3);
+    renderMatchResult();
+  },
+
+  confirmMatch() {
+    if (!State.matchResult || !State.matchResult.match) {
+      alert('Tidak ada match untuk dikonfirmasi.');
+      return;
+    }
+    calculateValue();
+    createTransaction();
+    State.currentStep = 5;
+    renderStepper(5);
+    showPanel(5);
+    renderImpact();
+  },
+
+  clearLog() {
+    document.getElementById('logWrap').innerHTML = '';
+  },
+
+  resetAll() {
+    resetData(); // resets localStorage to initial seed
+    State.currentStep = 1;
+    State.demand       = null;
+    State.matchResult  = null;
+    State.valueResult  = null;
+    State.transaction  = null;
+    this.clearLog();
+    log('Storage reset to seed data.', 'warn');
+    log('Ready.', 'success');
+    renderStepper(1);
+    showPanel(1);
+    renderCatalog();
+  },
+};
+
+/* ── Boot ────────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  log('ReSource Data Flow Simulator loaded.', 'success');
+  log('Seed data loaded from localStorage.', 'info');
+  App.goTo(1);
+});
+</script>
+
+</body>
+</html>
